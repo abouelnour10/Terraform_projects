@@ -1,0 +1,62 @@
+name: Terraform CI/CD
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+jobs:
+  terraform:
+    name: Terraform
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout the repository
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Install Terraform
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      # Initialize Terraform
+      - name: Terraform Init
+        run: terraform init
+
+      # Check Terraform formatting
+      - name: Terraform Format Check
+        run: terraform fmt -check
+
+      # Validate Terraform configuration
+      - name: Terraform Validate
+        run: terraform validate
+
+      # Run Terraform Plan
+      - name: Terraform Plan
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            mkdir -p plans
+            terraform plan \
+              -out="plans/${{ github.sha }}.tfplan"
+            terraform show \
+              -no-color \
+              "plans/${{ github.sha }}.tfplan" \
+              > "plans/${{ github.sha }}.txt"
+          else
+            terraform plan
+          fi
+
+      # Upload the saved Terraform plan only after merge to main
+      - name: Upload Terraform Plan
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-${{ github.sha }}
+          path: plans/
+
+      # Apply the exact Terraform plan generated on main
+      - name: Terraform Apply
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: terraform apply -auto-approve "plans/${{ github.sha }}.tfplan"
