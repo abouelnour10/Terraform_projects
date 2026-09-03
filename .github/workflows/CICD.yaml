@@ -17,7 +17,25 @@ jobs:
       # Checkout the repository
       - name: Checkout
         uses: actions/checkout@v4
+        
+      - name: Trivy Terraform Scan
+        if: github.event_name == 'pull_request'
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: config
+          scan-ref: .
+          format: table
+          output: trivy-results.txt
+          severity: HIGH,CRITICAL
+          exit-code: 1
 
+      # Upload Trivy findings even if the scan fails
+      - name: Upload Trivy Findings
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-findings-${{ github.event.pull_request.number }}
+          path: trivy-results.txt
       # Install Terraform
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
