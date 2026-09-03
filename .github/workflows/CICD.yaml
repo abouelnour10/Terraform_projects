@@ -1,11 +1,14 @@
 name: Terraform CI/CD
+
 on:
   pull_request:
     branches:
       - main
+
   push:
     branches:
       - main
+
   workflow_dispatch:
 
 jobs:
@@ -17,29 +20,12 @@ jobs:
       # Checkout the repository
       - name: Checkout
         uses: actions/checkout@v4
-        
-      - name: Trivy Terraform Scan
-        if: github.event_name == 'pull_request'
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: config
-          scan-ref: .
-          format: table
-          output: trivy-results.txt
-          severity: HIGH,CRITICAL
-          exit-code: 1
 
-      # Upload Trivy findings even if the scan fails
-      - name: Upload Trivy Findings
-        if: always() && github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-findings-${{ github.event.pull_request.number }}
-          path: trivy-results.txt
       # Install Terraform
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
+      # Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6.2.4
         with:
@@ -59,30 +45,82 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
-      # Run Terraform Plan
+      # --------------------------------------------------
+      # 1. Trivy Source Configuration Scan
+      # --------------------------------------------------
+      - name: Trivy Terraform Source Scan
+        if: github.event_name == 'pull_request'
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: config
+          scan-ref: .
+          format: table
+          output: trivy-source-results.txt
+          severity: HIGH,CRITICAL
+          exit-code: 1
+
+      # Upload source scan findings even if Trivy fails
+      - name: Upload Trivy Source Findings
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-source-findings-${{ github.event.pull_request.number }}
+          path: trivy-source-results.txt
+
+      # --------------------------------------------------
+      # 2. Terraform Plan
+      # --------------------------------------------------
       - name: Terraform Plan
         run: |
-          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            mkdir -p plans
-            terraform plan \
-              -out="plans/${{ github.sha }}.tfplan"
-            terraform show \
-              -no-color \
-              "plans/${{ github.sha }}.tfplan" \
-              > "plans/${{ github.sha }}.txt"
-          else
-            terraform plan
-          fi
+          mkdir -p plans
 
-      # Upload the saved Terraform plan only after merge to main
+          terraform plan \
+            -out="plans/${{ github.sha }}.tfplan"
+
+      # Convert Terraform plan to JSON
+      - name: Terraform Plan JSON
+        if: github.event_name == 'pull_request'
+        run: |
+          terraform show \
+            -json \
+            "plans/${{ github.sha }}.tfplan" \
+            > "plans/${{ github.sha }}.json"
+
+      # --------------------------------------------------
+      # 3. Trivy Terraform Plan Scan
+      # --------------------------------------------------
+      - name: Trivy Terraform Plan Scan
+        if: github.event_name == 'pull_request'
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: config
+          scan-ref: plans/${{ github.sha }}.json
+          format: table
+          output: trivy-plan-results.txt
+          severity: HIGH,CRITICAL
+          exit-code: 1
+
+      # Upload plan scan findings even if Trivy fails
+      - name: Upload Trivy Plan Findings
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-plan-findings-${{ github.event.pull_request.number }}
+          path: trivy-plan-results.txt
+
+      # --------------------------------------------------
+      # 4. Upload Terraform plan after merge to main
+      # --------------------------------------------------
       - name: Upload Terraform Plan
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
           name: terraform-plan-${{ github.sha }}
-          path: plans/
+          path: plans/${{ github.sha }}.tfplan
 
-      # Apply the exact Terraform plan generated on main
+      # --------------------------------------------------
+      # 5. Apply the exact Terraform plan generated on main
+      # --------------------------------------------------
       - name: Terraform Apply
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: terraform apply -auto-approve "plans/${{ github.sha }}.tfplan"
