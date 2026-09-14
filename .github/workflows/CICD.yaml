@@ -73,10 +73,10 @@ jobs:
         if: github.event_name == 'pull_request' && github.base_ref == 'main'
         uses: bridgecrewio/checkov-action@v12
         with:
-          directory: .
-          output_format: sarif
-          output_file_path: checkov-results.sarif
-          soft_fail: true
+         file: plans/${{ github.sha }}.json
+         output_format: sarif
+         output_file_path: checkov-plan-results.sarif
+         soft_fail: true
 
       # --------------------------------------------------
       # 5. Upload Checkov results to GitHub Code Scanning
