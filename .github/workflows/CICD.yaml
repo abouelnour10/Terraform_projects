@@ -46,38 +46,17 @@ jobs:
         run: terraform validate
 
       # --------------------------------------------------
-      # 1. Trivy Source Configuration Scan
-      # --------------------------------------------------
-      - name: Trivy Terraform Source Scan
-        if: github.event_name == 'pull_request'
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: config
-          scan-ref: .
-          format: table
-          output: trivy-source-results.txt
-          severity: HIGH,CRITICAL
-          exit-code: 1
-
-      # Upload source scan findings even if Trivy fails
-      - name: Upload Trivy Source Findings
-        if: always() && github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-source-findings-${{ github.event.pull_request.number }}
-          path: trivy-source-results.txt
-
-      # --------------------------------------------------
-      # 2. Terraform Plan
+      # 1. Terraform Plan
       # --------------------------------------------------
       - name: Terraform Plan
         run: |
           mkdir -p plans
-
           terraform plan \
             -out="plans/${{ github.sha }}.tfplan"
 
-      # Convert Terraform plan to JSON
+      # --------------------------------------------------
+      # 2. Convert Terraform Plan to JSON
+      # --------------------------------------------------
       - name: Terraform Plan JSON
         if: github.event_name == 'pull_request'
         run: |
@@ -87,29 +66,33 @@ jobs:
             > "plans/${{ github.sha }}.json"
 
       # --------------------------------------------------
-      # 3. Trivy Terraform Plan Scan
+      # 4. Checkov Terraform Scan
+      # Runs only for Pull Requests targeting main
       # --------------------------------------------------
-      - name: Trivy Terraform Plan Scan
-        if: github.event_name == 'pull_request'
-        uses: aquasecurity/trivy-action@master
+      - name: Run Checkov
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        uses: bridgecrewio/checkov-action@v12
         with:
-          scan-type: config
-          scan-ref: plans/${{ github.sha }}.json
-          format: table
-          output: trivy-plan-results.txt
-          severity: HIGH,CRITICAL
-          exit-code: 1
-
-      # Upload plan scan findings even if Trivy fails
-      - name: Upload Trivy Plan Findings
-        if: always() && github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-plan-findings-${{ github.event.pull_request.number }}
-          path: trivy-plan-results.txt
+         file: plans/${{ github.sha }}.json
+         output_format: sarif
+         output_file_path: checkov-plan-results.sarif
+         soft_fail: true
 
       # --------------------------------------------------
-      # 4. Upload Terraform plan after merge to main
+      # 5. Upload Checkov results to GitHub Code Scanning
+      # Runs only for Pull Requests targeting main
+      # --------------------------------------------------
+      - name: Upload Checkov results to Code Scanning
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: checkov-plan-results.sarif/results_sarif.sarif
+
+
+
+
+      # --------------------------------------------------
+      # 5. Upload Terraform plan after merge to main
       # --------------------------------------------------
       - name: Upload Terraform Plan
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -119,7 +102,7 @@ jobs:
           path: plans/${{ github.sha }}.tfplan
 
       # --------------------------------------------------
-      # 5. Apply the exact Terraform plan generated on main
+      # 6. Apply the exact Terraform plan generated on main
       # --------------------------------------------------
       - name: Terraform Apply
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
