@@ -70,12 +70,17 @@ jobs:
       # --------------------------------------------------
       - name: Checkov Terraform Plan Scan
         if: github.event_name == 'pull_request'
-        uses: bridgecrewio/checkov-action@master
-        with:
-         file: plans/${{ github.sha }}.json
-         framework: terraform_plan
-         output_format: cli
-         quiet: true 
+        run: |
+          checkov \
+            -f "plans/${{ github.sha }}.json" \
+            --framework terraform_plan \
+            --output json \
+            --output-file-path console > checkov-results.json
+
+          jq -r '
+            .results.failed_checks[] |
+            "\(.severity // "UNKNOWN")  \(.check_id): \(.check_name)"
+          ' checkov-results.json
 
       # --------------------------------------------------
       # 5. Upload Terraform plan after merge to main
