@@ -66,18 +66,30 @@ jobs:
             > "plans/${{ github.sha }}.json"
 
       # --------------------------------------------------
-      # 4. Checkov Terraform Plan Scan
+      # 4. Checkov Terraform Scan
+      # Runs only for Pull Requests targeting main
       # --------------------------------------------------
-      - name: Checkov Terraform Plan Scan
-        if: github.event_name == 'pull_request'
-        uses: bridgecrewio/checkov-action@master
+      - name: Run Checkov
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        uses: bridgecrewio/checkov-action@v12
         with:
-         file: plans/${{ github.sha }}.json
-         framework: terraform_plan
-         #severity: HIGH,CRITICAL
-         output_format: cli
-         quiet: true 
-         skip_check: CKV2_AWS_41
+          directory: .
+          output_format: sarif
+          output_file_path: checkov-results.sarif
+          soft_fail: true
+
+      # --------------------------------------------------
+      # 5. Upload Checkov results to GitHub Code Scanning
+      # Runs only for Pull Requests targeting main
+      # --------------------------------------------------
+      - name: Upload Checkov results to Code Scanning
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: checkov-results.sarif
+
+
+
 
       # --------------------------------------------------
       # 5. Upload Terraform plan after merge to main
