@@ -66,22 +66,16 @@ jobs:
             > "plans/${{ github.sha }}.json"
 
       # --------------------------------------------------
-      # 3. Install Checkov
-      # --------------------------------------------------
-      - name: Install Checkov
-        if: github.event_name == 'pull_request'
-        run: pip install checkov
-
-      # --------------------------------------------------
       # 4. Checkov Terraform Plan Scan
       # --------------------------------------------------
       - name: Checkov Terraform Plan Scan
         if: github.event_name == 'pull_request'
-        run: |
-          checkov \
-            -f "plans/${{ github.sha }}.json" \
-            --framework terraform_plan \
-            --output cli
+        uses: bridgecrewio/checkov-action@master
+        with:
+         file: plans/${{ github.sha }}.json
+         framework: terraform_plan
+         output_format: cli
+         quiet: true 
 
       # --------------------------------------------------
       # 5. Upload Terraform plan after merge to main

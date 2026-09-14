@@ -25,9 +25,22 @@ data "aws_ami" "amazon_linux_2023" {
 }
 
 resource "aws_instance" "container" {
-  ami           = data.aws_ami.amazon_linux_2023.id
-  instance_type = "t3.micro"
-  subnet_id     = data.aws_subnets.existing.ids[0]
+  ami                         = data.aws_ami.amazon_linux_2023.id
+  instance_type               = "t3.micro"
+  subnet_id                   = data.aws_subnets.existing.ids[0]
+  associate_public_ip_address = false
+  monitoring                  = true
+
+  metadata_options {
+    http_endpoint = "enabled"
+    http_tokens   = "required"
+  }
+
+  root_block_device {
+    encrypted             = true
+    volume_type           = "gp3"
+    delete_on_termination = true
+  }
 
   tags = {
     Name = "ec2-container"
