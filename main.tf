@@ -25,10 +25,12 @@ data "aws_ami" "amazon_linux_2023" {
 }
 
 resource "aws_instance" "container" {
+  #checkov:skip=CKV2_AWS_41:This instance does not require an IAM role.
   ami                         = data.aws_ami.amazon_linux_2023.id
   instance_type               = "t3.micro"
   subnet_id                   = data.aws_subnets.existing.ids[0]
   associate_public_ip_address = false
+  ebs_optimized               = true
   monitoring                  = true
 
   metadata_options {
